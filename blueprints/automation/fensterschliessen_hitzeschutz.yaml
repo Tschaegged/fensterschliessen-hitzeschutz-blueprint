@@ -18,7 +18,7 @@ blueprint:
 
     outdoor_threshold:
       name: Mindest-Außentemperatur (°C)
-      description: Trigger feuert erst wenn die Außentemperatur diesen Wert überschreitet
+      description: Benachrichtigung nur wenn Außentemperatur über diesem Wert liegt
       default: 22
       selector:
         number:
@@ -67,42 +67,43 @@ blueprint:
 
 variables:
   outdoor_sensor: !input outdoor_sensor
+  outdoor_threshold: !input outdoor_threshold
   indoor_sensors: !input indoor_sensors
   persons: !input persons
 
 triggers:
-  - trigger: numeric_state
-    entity_id: !input outdoor_sensor
-    above: !input outdoor_threshold
+  - trigger: template
+    value_template: >
+      {% set outdoor = states(outdoor_sensor) | float(-99) %}
+      {% if outdoor < outdoor_threshold %}
+        false
+      {% else %}
+        {% set ns = namespace(total=0, count=0) %}
+        {% for s in indoor_sensors %}
+          {% set val = states(s) | float(none) %}
+          {% if val is not none %}
+            {% set ns.total = ns.total + val %}
+            {% set ns.count = ns.count + 1 %}
+          {% endif %}
+        {% endfor %}
+        {% if ns.count > 0 %}
+          {{ outdoor > ns.total / ns.count }}
+        {% else %}
+          false
+        {% endif %}
+      {% endif %}
+    for: "00:05:00"
 
 conditions:
   - condition: state
     entity_id: !input window_sensor
     state: "on"
-
   - condition: template
     value_template: >
       {% if persons | length == 0 %}
         true
       {% else %}
         {{ persons | map('states') | select('eq', 'home') | list | length > 0 }}
-      {% endif %}
-
-  - condition: template
-    value_template: >
-      {% set outdoor = states(outdoor_sensor) | float(0) %}
-      {% set ns = namespace(total=0, count=0) %}
-      {% for s in indoor_sensors %}
-        {% set val = states(s) | float(none) %}
-        {% if val is not none %}
-          {% set ns.total = ns.total + val %}
-          {% set ns.count = ns.count + 1 %}
-        {% endif %}
-      {% endfor %}
-      {% if ns.count > 0 %}
-        {{ outdoor > ns.total / ns.count }}
-      {% else %}
-        false
       {% endif %}
 
 actions: !input notify_actions
