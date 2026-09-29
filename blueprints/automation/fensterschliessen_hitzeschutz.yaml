@@ -1,10 +1,11 @@
 blueprint:
   name: Fenster schließen – Hitzeschutz-Benachrichtigung
   source_url: https://github.com/Tschaegged/fensterschliessen-hitzeschutz-blueprint/blob/main/blueprints/automation/fensterschliessen_hitzeschutz.yaml
-  description: >
-    Sendet eine Benachrichtigung wenn die Außentemperatur über einem Schwellenwert liegt
-    UND wärmer als der Durchschnitt der gewählten Innenraum-Sensoren ist.
-    Räume für den Durchschnitt sind frei wählbar (Mehrfachauswahl).
+  description: 'Sendet eine Benachrichtigung wenn die Außentemperatur über einem Schwellenwert
+    liegt UND wärmer als der Durchschnitt der gewählten Innenraum-Sensoren ist. Räume
+    für den Durchschnitt sind frei wählbar (Mehrfachauswahl).
+
+    '
   domain: automation
   author: Claude
   input:
@@ -13,138 +14,122 @@ blueprint:
       description: Sensor für die aktuelle Außentemperatur
       selector:
         entity:
-          domain: sensor
-          device_class: temperature
-
+          domain:
+          - sensor
+          device_class:
+          - temperature
+          reorder: false
+          multiple: false
     outdoor_threshold:
       name: Mindest-Außentemperatur (°C)
       description: Benachrichtigung nur wenn Außentemperatur über diesem Wert liegt
       default: 22
       selector:
         number:
-          min: 15
-          max: 45
+          min: 15.0
+          max: 45.0
           step: 0.5
-          unit_of_measurement: "°C"
+          unit_of_measurement: °C
           mode: slider
-
     indoor_sensors:
       name: Innenraum-Temperatursensoren
-      description: >
-        Wähle die Räume, die für den Temperatur-Durchschnitt berücksichtigt werden sollen.
-        Mehrfachauswahl möglich.
+      description: 'Wähle die Räume, die für den Temperatur-Durchschnitt berücksichtigt
+        werden sollen. Mehrfachauswahl möglich.
+
+        '
       selector:
         entity:
           multiple: true
-          domain: sensor
-          device_class: temperature
-
+          domain:
+          - sensor
+          device_class:
+          - temperature
+          reorder: false
     window_sensor:
       name: Fenster-/Türen-Sensor
       description: Binärsensor der anzeigt ob Fenster oder Türen geöffnet sind
       selector:
         entity:
-          domain: binary_sensor
-
+          domain:
+          - binary_sensor
+          reorder: false
+          multiple: false
     persons:
       name: Personen (Anwesenheitsprüfung)
-      description: >
-        Benachrichtigung nur wenn mindestens eine dieser Personen zu Hause ist.
-        Leer lassen um die Prüfung zu überspringen.
+      description: 'Benachrichtigung nur wenn mindestens eine dieser Personen zu Hause
+        ist. Leer lassen um die Prüfung zu überspringen.
+
+        '
       default: []
       selector:
         entity:
           multiple: true
-          domain: person
-
+          domain:
+          - person
+          reorder: false
     cooldown_hours:
       name: Cooldown (Stunden)
       description: Mindestabstand zwischen zwei Benachrichtigungen
       default: 4
       selector:
         number:
-          min: 1
-          max: 24
-          step: 1
-          unit_of_measurement: "h"
+          min: 1.0
+          max: 24.0
+          step: 1.0
+          unit_of_measurement: h
           mode: slider
-
     notify_actions:
       name: Benachrichtigungsaktionen
-      description: >
-        Aktionen die ausgeführt werden sollen (z.B. notify.mobile_app_...).
+      description: 'Aktionen die ausgeführt werden sollen (z.B. notify.mobile_app_...).
         Mehrere Empfänger können hier nacheinander eingetragen werden.
+
+        '
       selector:
         action: {}
-
+# Trigger sehen nur trigger_variables, nicht variables. Ohne diesen Block
+# initialisiert der Template-Trigger nicht ("'outdoor_sensor' is undefined"),
+# und die Automation laeuft nur noch ueber den 30-Minuten-Takt.
+trigger_variables:
+  outdoor_sensor: !input outdoor_sensor
+  outdoor_threshold: !input outdoor_threshold
+  indoor_sensors: !input indoor_sensors
 variables:
   outdoor_sensor: !input outdoor_sensor
   outdoor_threshold: !input outdoor_threshold
   indoor_sensors: !input indoor_sensors
   persons: !input persons
   cooldown_hours: !input cooldown_hours
-
 triggers:
-  - trigger: template
-    value_template: >
-      {% set outdoor = states(outdoor_sensor) | float(-99) %}
-      {% if outdoor < outdoor_threshold %}
-        false
-      {% else %}
-        {% set ns = namespace(total=0, count=0) %}
-        {% for s in indoor_sensors %}
-          {% set val = states(s) | float(none) %}
-          {% if val is not none %}
-            {% set ns.total = ns.total + val %}
-            {% set ns.count = ns.count + 1 %}
-          {% endif %}
-        {% endfor %}
-        {% if ns.count > 0 %}
-          {{ outdoor > ns.total / ns.count }}
-        {% else %}
-          false
-        {% endif %}
-      {% endif %}
-    for: "00:05:00"
-  - trigger: time_pattern
-    minutes: "/30"
-
+- trigger: template
+  value_template: "{% set outdoor = states(outdoor_sensor) | float(-99) %} {% if outdoor
+    < outdoor_threshold %}\n  false\n{% else %}\n  {% set ns = namespace(total=0,
+    count=0) %}\n  {% for s in indoor_sensors %}\n    {% set val = states(s) | float(none)
+    %}\n    {% if val is not none %}\n      {% set ns.total = ns.total + val %}\n
+    \     {% set ns.count = ns.count + 1 %}\n    {% endif %}\n  {% endfor %}\n  {%
+    if ns.count > 0 %}\n    {{ outdoor > ns.total / ns.count }}\n  {% else %}\n    false\n
+    \ {% endif %}\n{% endif %}\n"
+  for: 00:05:00
+- trigger: time_pattern
+  minutes: /30
 conditions:
-  - condition: template
-    value_template: >
-      {% set outdoor = states(outdoor_sensor) | float(-99) %}
-      {% if outdoor < outdoor_threshold %}
-        false
-      {% else %}
-        {% set ns = namespace(total=0, count=0) %}
-        {% for s in indoor_sensors %}
-          {% set val = states(s) | float(none) %}
-          {% if val is not none %}
-            {% set ns.total = ns.total + val %}
-            {% set ns.count = ns.count + 1 %}
-          {% endif %}
-        {% endfor %}
-        {% if ns.count > 0 %}
-          {{ outdoor > ns.total / ns.count }}
-        {% else %}
-          false
-        {% endif %}
-      {% endif %}
-  - condition: state
-    entity_id: !input window_sensor
-    state: "on"
-  - condition: template
-    value_template: >
-      {% if persons | length == 0 %}
-        true
-      {% else %}
-        {{ persons | map('states') | select('eq', 'home') | list | length > 0 }}
-      {% endif %}
-  - condition: template
-    value_template: >
-      {% set last = this.attributes.last_triggered %}
-      {{ last is none or (now() - last).total_seconds() > cooldown_hours * 3600 }}
+- condition: template
+  value_template: "{% set outdoor = states(outdoor_sensor) | float(-99) %} {% if outdoor
+    < outdoor_threshold %}\n  false\n{% else %}\n  {% set ns = namespace(total=0,
+    count=0) %}\n  {% for s in indoor_sensors %}\n    {% set val = states(s) | float(none)
+    %}\n    {% if val is not none %}\n      {% set ns.total = ns.total + val %}\n
+    \     {% set ns.count = ns.count + 1 %}\n    {% endif %}\n  {% endfor %}\n  {%
+    if ns.count > 0 %}\n    {{ outdoor > ns.total / ns.count }}\n  {% else %}\n    false\n
+    \ {% endif %}\n{% endif %}\n"
+- condition: state
+  entity_id: !input window_sensor
+  state: 'on'
+- condition: template
+  value_template: "{% if persons | length == 0 %}\n  true\n{% else %}\n  {{ persons
+    | map('states') | select('eq', 'home') | list | length > 0 }}\n{% endif %}\n"
+- condition: template
+  value_template: '{% set last = this.attributes.last_triggered %} {{ last is none
+    or (now() - last).total_seconds() > cooldown_hours * 3600 }}
 
+    '
 actions: !input notify_actions
-
 mode: single
